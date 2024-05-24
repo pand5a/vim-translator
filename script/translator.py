@@ -44,6 +44,7 @@ class BaseTranslator(object):
         self._agent = (
             "Mozilla/5.0 (X11; Linux x86_64; rv:50.0) Gecko/20100101 Firefox/50.0"
         )
+        self._offline_dict_path = None
 
     def request(self, url, data=None, post=False, header=None):
         if header:
@@ -123,6 +124,9 @@ class BaseTranslator(object):
 
         socks.set_default_proxy(**proxy_args)
         socket.socket = socks.socksocket
+
+    def set_offline_dict_path(self, path):
+        self._offline_dict_path = path 
 
     def test_request(self, test_url):
         print("test url: %s" % test_url)
@@ -566,6 +570,110 @@ class SdcvShell(BaseTranslator):
         run.close()
         return res
 
+class OffLine(BaseTranslator):
+    def __init__(self):
+        super(OffLine, self).__init__("offline")
+
+    # 数据库记录转化为字典
+    def __record2obj (self, record):
+        if record is None:
+            return None
+
+        fields = ( 'id', 'word', 'sw', 'phonetic', 'definition', 
+            'translation', 'pos', 'collins', 'oxford', 'tag', 'bnc', 'frq', 
+            'exchange', 'detail', 'audio' )
+        fields_ex = tuple([(fields[i], i) for i in range(len(fields))])
+
+        word = {}
+        for k, v in fields_ex:
+            word[k] = record[v]
+        if word['detail']:
+            text = word['detail']
+            try:
+                obj = json.loads(text)
+            except:
+                obj = None
+            word['detail'] = obj
+        return word
+
+    # 查询单词
+    def query (self, key):
+        unicode = str
+        long = int
+
+        if self._offline_dict_path ==None:
+            sys.stderr.write("empty offline dict path \n")
+            return None
+
+        try:
+            import sqlite3 
+        except ImportError:
+            import pip
+            pip.main(["install", "--user", "sqlite3"])
+            import sqlite3 
+
+        # dir = "{0}/{1}".format(os.getcwd(), "ultimate.db")
+        dict_path = self._offline_dict_path
+        with sqlite3.connect(dict_path) as con:
+            c = con.cursor()
+            record = None
+            if isinstance(key, int) or isinstance(key, long):
+                c.execute('select * from stardict where id = ?;', (key,))
+            elif isinstance(key, str) or isinstance(key, unicode):
+                c.execute('select * from stardict where word = ?', (key,))
+            else:
+                return None
+            record = c.fetchone()
+            con.close
+            return self.__record2obj(record)
+
+    def translate(self, sl, tl, text, options=None):
+        if not options:
+            options = []
+
+        if self._proxy_url:
+            options.append("-proxy {}".format(self._proxy_url))
+
+        result = self.query(text)
+        if result == None:
+            return 
+
+        # try:
+        #     import wget
+        # except ImportError:
+        #     import pip
+        #     pip.main(["install", "--user", "wget"])
+        #     import wget
+        #
+        #
+        # uri = "https://github.com/skywind3000/ECDICT-ultimate/releases/download/1.0.0/ecdict-ultimate-sqlite.zip"
+        # dir = "{0}/{1}".format(os.getcwd(), "ultimate.zip")
+        # wget.download(uri, dir)
+
+        # source_lang = "" if sl == "auto" else sl
+        # dictionary = self.get_dictionary(source_lang, tl, text)
+        # if dictionary == "":
+        #     default_opts = []
+        # else:
+        #     default_opts = [" ".join(["-u", dictionary])]
+        # options = default_opts + options
+        # cmd = "sdcv {} '{}'".format(" ".join(options), text)
+        # run = os.popen(cmd)
+        # lines = []
+        # for line in run.readlines():
+        #     line = re.sub(r"^Found.*", "", line)
+        #     line = re.sub(r"^-->.*", "", line)
+        #     line = re.sub(r"^\s*", "", line)
+        #     line = re.sub(r"^\*", "", line)
+        #     lines.append(line)
+        res = self.create_translation(sl, tl, text)
+        
+        #res["explains"] = lines
+        res["explains"] = result.get("translation")
+        #run.close()
+        return res
+
+
 
 ENGINES = {
     "baicizhan": BaicizhanTranslator,
@@ -574,6 +682,7 @@ ENGINES = {
     "google": GoogleTranslator,
     "iciba": ICibaTranslator,
     "sdcv": SdcvShell,
+    "offline": OffLine,
     "trans": TranslateShell,
     "youdao": YoudaoTranslator,
 }
@@ -596,6 +705,7 @@ def main():
     parser.add_argument("--source_lang", required=False, default="en")
     parser.add_argument("--proxy", required=False)
     parser.add_argument("--options", type=str, default=None, required=False)
+    parser.add_argument("--offline_dict_path", type=str, default=None, required=False)
     parser.add_argument("text", nargs="+", type=str)
     args = parser.parse_args()
 
