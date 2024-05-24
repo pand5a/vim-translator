@@ -612,8 +612,8 @@ class OffLine(BaseTranslator):
             pip.main(["install", "--user", "sqlite3"])
             import sqlite3 
 
-        # dir = "{0}/{1}".format(os.getcwd(), "ultimate.db")
-        dict_path = self._offline_dict_path
+        dict_path = "{0}/{1}".format(os.getcwd(), "ultimate.db")
+        # dict_path = self._offline_dict_path
         with sqlite3.connect(dict_path) as con:
             c = con.cursor()
             record = None
