@@ -126,7 +126,7 @@ class BaseTranslator(object):
         socket.socket = socks.socksocket
 
     def set_offline_dict_path(self, path):
-        self._offline_dict_path = path 
+        self._offline_dict_path = path
 
     def test_request(self, test_url):
         print("test url: %s" % test_url)
@@ -231,7 +231,8 @@ class BingDict(BaseTranslator):
     def get_phonetic(self, html):
         if not html:
             return ""
-        m = re.findall(r'<span class="ht_attr" lang=".*?">\[(.*?)\] </span>', html)
+        m = re.findall(
+            r'<span class="ht_attr" lang=".*?">\[(.*?)\] </span>', html)
         if not m:
             return ""
         return self.html_unescape(m[0].strip())
@@ -476,6 +477,30 @@ class YoudaoTranslator(BaseTranslator):
         return explains
 
 
+class LibreTranslate(BaseTranslator):
+    def __init__(self):
+        super(LibreTranslate, self).__init__("libre")
+        self.url = "http://localhost:5000/translate"
+
+    def translate(self, sl, tl, text, options=None):
+        data = {
+            "q": text,
+            "source": sl,
+            "target": tl,
+            "format": "text",
+            "alternatives": 3,
+        }
+
+        url_params = urlencode(data)
+        req = Request(self.url, data=url_params.encode())
+        response = urlopen(req)
+        response_str = response.read().decode()
+
+        res = self.create_translation(sl, tl, text)
+        res["explains"] = [json.loads(response_str)["translatedText"]]
+        return res
+
+
 class TranslateShell(BaseTranslator):
     def __init__(self):
         super(TranslateShell, self).__init__("trans")
@@ -497,7 +522,8 @@ class TranslateShell(BaseTranslator):
         ]
         options = default_opts + options
         source_lang = "" if sl == "auto" else sl
-        cmd = "trans {} {}:{} '{}'".format(" ".join(options), source_lang, tl, text)
+        cmd = "trans {} {}:{} '{}'".format(
+            " ".join(options), source_lang, tl, text)
         run = os.popen(cmd)
         lines = []
         for line in run.readlines():
@@ -570,18 +596,19 @@ class SdcvShell(BaseTranslator):
         run.close()
         return res
 
+
 class OffLine(BaseTranslator):
     def __init__(self):
         super(OffLine, self).__init__("offline")
 
     # 数据库记录转化为字典
-    def __record2obj (self, record):
+    def __record2obj(self, record):
         if record is None:
             return None
 
-        fields = ( 'id', 'word', 'sw', 'phonetic', 'definition', 
-            'translation', 'pos', 'collins', 'oxford', 'tag', 'bnc', 'frq', 
-            'exchange', 'detail', 'audio' )
+        fields = ('id', 'word', 'sw', 'phonetic', 'definition',
+                  'translation', 'pos', 'collins', 'oxford', 'tag', 'bnc', 'frq',
+                  'exchange', 'detail', 'audio')
         fields_ex = tuple([(fields[i], i) for i in range(len(fields))])
 
         word = {}
@@ -597,20 +624,20 @@ class OffLine(BaseTranslator):
         return word
 
     # 查询单词
-    def query (self, key):
+    def query(self, key):
         unicode = str
         long = int
 
-        if self._offline_dict_path ==None:
+        if self._offline_dict_path == None:
             sys.stderr.write("empty offline dict path \n")
             return None
 
         try:
-            import sqlite3 
+            import sqlite3
         except ImportError:
             import pip
             pip.main(["install", "--user", "sqlite3"])
-            import sqlite3 
+            import sqlite3
 
         dict_path = "{0}/{1}".format(os.getcwd(), "ultimate.db")
         # dict_path = self._offline_dict_path
@@ -636,7 +663,7 @@ class OffLine(BaseTranslator):
 
         result = self.query(text)
         if result == None:
-            return 
+            return
 
         # try:
         #     import wget
@@ -667,12 +694,11 @@ class OffLine(BaseTranslator):
         #     line = re.sub(r"^\*", "", line)
         #     lines.append(line)
         res = self.create_translation(sl, tl, text)
-        
-        #res["explains"] = lines
-        res["explains"] = result.get("translation")
-        #run.close()
-        return res
 
+        # res["explains"] = lines
+        res["explains"] = result.get("translation")
+        # run.close()
+        return res
 
 
 ENGINES = {
@@ -685,6 +711,7 @@ ENGINES = {
     "offline": OffLine,
     "trans": TranslateShell,
     "youdao": YoudaoTranslator,
+    "libre": LibreTranslate,
 }
 
 
@@ -700,16 +727,18 @@ def sanitize_input_text(text):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--engines", nargs="+", required=False, default=["google"])
+    parser.add_argument("--engines", nargs="+",
+                        required=False, default=["google"])
     parser.add_argument("--target_lang", required=False, default="zh")
     parser.add_argument("--source_lang", required=False, default="en")
     parser.add_argument("--proxy", required=False)
     parser.add_argument("--options", type=str, default=None, required=False)
-    parser.add_argument("--offline_dict_path", type=str, default=None, required=False)
+    parser.add_argument("--offline_dict_path", type=str,
+                        default=None, required=False)
     parser.add_argument("text", nargs="+", type=str)
     args = parser.parse_args()
 
-    args.text = [ sanitize_input_text(x) for x in args.text ]
+    args.text = [sanitize_input_text(x) for x in args.text]
 
     text = " ".join(args.text).strip("'").strip('"').strip()
     text = re.sub(r"([a-z])([A-Z][a-z])", r"\1 \2", text)
@@ -795,5 +824,10 @@ if __name__ == "__main__":
         r = t.translate("auto", "zh", "naive")
         print(r)
 
-    # test3()
+    def test8():
+        t = LibreTranslate()
+        r = t.translate("en", "zh", "naive")
+        print(r)
+
+    # test8()
     main()
